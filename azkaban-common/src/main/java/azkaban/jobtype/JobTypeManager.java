@@ -19,6 +19,7 @@ package azkaban.jobtype;
 import azkaban.Constants;
 import azkaban.jobExecutor.JavaProcessJob;
 import azkaban.jobExecutor.Job;
+import azkaban.jobExecutor.JobClassLoader;
 import azkaban.jobExecutor.NoopJob;
 import azkaban.jobExecutor.ProcessJob;
 import azkaban.jobExecutor.utils.JobExecutionException;
@@ -311,7 +312,12 @@ public class JobTypeManager {
     return jobTypeLoader;
   }
 
-  public Job buildJobExecutor(final String jobId, Props jobProps, final Logger logger)
+  public Job buildJobExecutor(final String jobId, Props jobProps, final Logger logger) {
+    return buildJobExecutor(jobId, jobProps, logger,
+        new JobClassLoader(new URL[0], getClass().getClassLoader(), jobId));
+  }
+
+  public Job buildJobExecutor(final String jobId, Props jobProps, final Logger logger, ClassLoader jobClassLoader)
       throws JobTypeManagerException {
     // This is final because during build phase, you should never need to swap
     // the pluginSet for safety reasons
@@ -328,7 +334,8 @@ public class JobTypeManager {
 
       logger.info("Building " + jobType + " job executor. ");
 
-      final Class<? extends Object> executorClass = pluginSet.getPluginClass(jobType);
+      String executorClassName = pluginSet.getPluginClassName(jobType);
+      final Class<? extends Object> executorClass = jobClassLoader.loadClass(executorClassName);
       if (executorClass == null) {
         throw new JobExecutionException(String.format("Job type '" + jobType
                 + "' is unrecognized. Could not construct job[%s] of type[%s].",

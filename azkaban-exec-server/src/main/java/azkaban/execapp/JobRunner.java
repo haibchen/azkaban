@@ -32,6 +32,7 @@ import azkaban.flow.CommonJobProperties;
 import azkaban.jobExecutor.AbstractProcessJob;
 import azkaban.jobExecutor.JavaProcessJob;
 import azkaban.jobExecutor.Job;
+import azkaban.jobExecutor.JobClassLoader;
 import azkaban.jobtype.JobTypeManager;
 import azkaban.jobtype.JobTypeManagerException;
 import azkaban.spi.EventType;
@@ -43,6 +44,7 @@ import azkaban.utils.UndefinedPropertyException;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -96,6 +98,7 @@ public class JobRunner extends EventHandler implements Runnable {
   private long delayStartMs = 0;
   private volatile boolean killed = false;
   private BlockingStatus currentBlockStatus = null;
+  private final ClassLoader threadClassLoader;
 
   public JobRunner(final ExecutableNode node, final File workingDir, final ExecutorLoader loader,
       final JobTypeManager jobtypeManager, final Props azkabanProps) {
@@ -113,6 +116,7 @@ public class JobRunner extends EventHandler implements Runnable {
         JobProperties.JOB_LOG_LAYOUT, DEFAULT_LAYOUT);
 
     this.loggerLayout = new EnhancedPatternLayout(jobLogLayout);
+    this.threadClassLoader = Thread.currentThread().getContextClassLoader();
   }
 
   public static String createLogFileName(final ExecutableNode node, final int attempt) {
@@ -569,6 +573,8 @@ public class JobRunner extends EventHandler implements Runnable {
     } catch (final Exception e) {
       serverLogger.error("Unexpected exception", e);
       throw e;
+    } finally {
+      Thread.currentThread().setContextClassLoader(threadClassLoader);
     }
   }
 
@@ -726,7 +732,9 @@ public class JobRunner extends EventHandler implements Runnable {
       }
 
       try {
-        this.job = this.jobtypeManager.buildJobExecutor(this.jobId, this.props, this.logger);
+        ClassLoader jobClassLoader = new JobClassLoader(new URL[0], getClass().getClassLoader(), jobId);
+        Thread.currentThread().setContextClassLoader(jobClassLoader);
+        this.job = this.jobtypeManager.buildJobExecutor(this.jobId, this.props, this.logger, jobClassLoader);
       } catch (final JobTypeManagerException e) {
         this.logger.error("Failed to build job type", e);
         return null;

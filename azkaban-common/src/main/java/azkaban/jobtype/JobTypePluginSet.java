@@ -17,6 +17,7 @@ package azkaban.jobtype;
 
 import azkaban.jobExecutor.Job;
 import azkaban.utils.Props;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,6 +37,7 @@ public class JobTypePluginSet {
   private final Map<String, Props> pluginLoadPropsMap;
   private final Map<String, Props> pluginPrivatePropsMap;
   private final Map<String, JobPropsProcessor> plugJobPropProcessor;
+  private final Map<String, String> jobToClassName;
 
   private Props commonJobProps;
   private Props commonLoadProps;
@@ -49,6 +51,7 @@ public class JobTypePluginSet {
     this.pluginLoadPropsMap = new HashMap<>();
     this.pluginPrivatePropsMap = new HashMap<>();
     this.plugJobPropProcessor = new HashMap<>();
+    this.jobToClassName = new HashMap<>();
   }
 
   /**
@@ -62,6 +65,7 @@ public class JobTypePluginSet {
     this.commonJobProps = clone.commonJobProps;
     this.commonLoadProps = clone.commonLoadProps;
     this.plugJobPropProcessor = clone.plugJobPropProcessor;
+    this.jobToClassName = clone.jobToClassName;
   }
 
   /**
@@ -125,6 +129,14 @@ public class JobTypePluginSet {
   public void addPluginClass(final String jobTypeName,
       final Class<? extends Job> jobTypeClass) {
     this.jobToClass.put(jobTypeName, jobTypeClass);
+    this.jobToClassName.put(jobTypeName, jobTypeClass.getName());
+  }
+
+  /**
+   * Gets the plugin job class name
+   */
+  public String getPluginClassName(final String jobTypeName) {
+    return this.jobToClassName.get(jobTypeName);
   }
 
   /**
