@@ -32,7 +32,6 @@ import azkaban.flow.CommonJobProperties;
 import azkaban.jobExecutor.AbstractProcessJob;
 import azkaban.jobExecutor.JavaProcessJob;
 import azkaban.jobExecutor.Job;
-import azkaban.jobExecutor.JobClassLoader;
 import azkaban.jobtype.JobTypeManager;
 import azkaban.jobtype.JobTypeManagerException;
 import azkaban.spi.EventType;
@@ -44,7 +43,7 @@ import azkaban.utils.UndefinedPropertyException;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
-import java.net.URL;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -732,9 +731,9 @@ public class JobRunner extends EventHandler implements Runnable {
       }
 
       try {
-        ClassLoader jobClassLoader = new JobClassLoader(new URL[0], getClass().getClassLoader(), jobId);
-        Thread.currentThread().setContextClassLoader(jobClassLoader);
-        this.job = this.jobtypeManager.buildJobExecutor(this.jobId, this.props, this.logger, jobClassLoader);
+        JobTypeManager.JobParams jobParams = jobtypeManager.createJobParams(jobId, this.props, this.logger);
+        Thread.currentThread().setContextClassLoader(jobParams.jobClassLoader);
+        this.job = JobTypeManager.createJob(this.jobId, jobParams, this.logger);
       } catch (final JobTypeManagerException e) {
         this.logger.error("Failed to build job type", e);
         return null;
