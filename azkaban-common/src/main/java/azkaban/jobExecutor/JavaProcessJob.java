@@ -97,33 +97,7 @@ public class JavaProcessJob extends ProcessJob {
   }
 
   private List<String> getClusterComponentClassPath() {
-    List<String> classpaths = new ArrayList<>();
-    Map<String, String> compoClasspaths = sysProps.getMapByPrefix("library.path.");
-    for (String compo : getClusterComponents()) {
-      classpaths.add(compoClasspaths.get(compo));
-    }
-    return classpaths;
-  }
-
-
-  /**
-   * Get the components within a cluster that a job depends on.
-   */
-  private Collection<String> getClusterComponents() {
-    // use ordered set to maintain the classpath order as much as possible
-    Set<String> components = new LinkedHashSet<>();
-
-    List<String> jobtypeComponents = sysProps.getStringList(
-        CommonJobProperties.JOBTYPE_CLUSTER_COMPONENTS_DEPENDENCIES,
-        Collections.emptyList(), ",");
-    components.addAll(jobtypeComponents);
-
-    List<String> jobTypeComponents = jobProps.getStringList(
-        CommonJobProperties.JOB_CLUSTER_COMPONENTS_DEPENDENCIES,
-        Collections.emptyList(), ",");
-    components.addAll(jobTypeComponents);
-
-    return components;
+    return jobProps.getStringList(CommonJobProperties.TARGET_CLUSTER_CLASSPATH, ":");
   }
 
   protected List<String> getClassPaths() {
@@ -212,15 +186,7 @@ public class JavaProcessJob extends ProcessJob {
   }
 
   private String getNativeLibrarAsJVMArguments() {
-    List<String> nativeLibraryLibPaths = new ArrayList<>();
-    Map<String, String> compoNativeLibPaths = sysProps.getMapByPrefix("native.library.path.");
-    for (String compo : getClusterComponents()) {
-      String nativeLibPath = compoNativeLibPaths.get(compo);
-      if (nativeLibPath != null) {
-        nativeLibraryLibPaths.add(nativeLibPath);
-      }
-    }
-    return "-Djava.library.path=" + String.join(":", nativeLibraryLibPaths);
+    return "-Djava.library.path=" + jobProps.get(CommonJobProperties.TARGET_CLUSTER_NATIVE_LIB);
   }
 
   protected String createArguments(final List<String> arguments, final String separator) {

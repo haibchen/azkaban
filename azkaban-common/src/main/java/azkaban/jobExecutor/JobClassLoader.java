@@ -18,6 +18,8 @@ package azkaban.jobExecutor;
 
 import java.net.URL;
 import java.net.URLClassLoader;
+
+import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,7 +89,9 @@ public class JobClassLoader extends URLClassLoader {
     Class<?> c = findLoadedClass(name);
     ClassNotFoundException ex = null;
 
-    if (c == null) {
+    // A Job instance is instantiated with an instance of Logger and Props loaded from the parent class
+    // in JobTypeManager. We must delegate loading of them both to the parent class as such.
+    if (c == null && !name.startsWith("org.apache.log4j") && !name.equals("azkaban.utils.Props")) {
       try {
         c = findClass(name);
         if (LOG.isDebugEnabled() && c != null) {
@@ -118,5 +122,10 @@ public class JobClassLoader extends URLClassLoader {
     }
 
     return c;
+  }
+
+  @VisibleForTesting
+  void addURL(Class clazz) {
+    super.addURL(clazz.getProtectionDomain().getCodeSource().getLocation());
   }
 }

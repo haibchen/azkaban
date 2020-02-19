@@ -17,6 +17,10 @@
 package azkaban.jobtype;
 
 import azkaban.Constants;
+import azkaban.cluster.Cluster;
+import azkaban.cluster.ClusterRouter;
+import azkaban.cluster.DisabledClusterRouter;
+import azkaban.flow.CommonJobProperties;
 import azkaban.jobExecutor.JavaProcessJob;
 import azkaban.jobExecutor.Job;
 import azkaban.jobExecutor.JobClassLoader;
@@ -32,7 +36,11 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.log4j.Logger;
@@ -43,14 +51,21 @@ public class JobTypeManager {
   private final String jobTypePluginDir; // the dir for jobtype plugins
   private final ClassLoader parentLoader;
   private final Props globalProperties;
+  private final ClusterRouter clusterRouter;
   private JobTypePluginSet pluginSet;
 
+  @VisibleForTesting
   public JobTypeManager(final String jobtypePluginDir, final Props globalProperties,
       final ClassLoader parentClassLoader) {
+    this(jobtypePluginDir, globalProperties, parentClassLoader, new DisabledClusterRouter());
+  }
+
+  public JobTypeManager(final String jobtypePluginDir, final Props globalProperties,
+    final ClassLoader parentClassLoader, ClusterRouter clusterRouter) {
     this.jobTypePluginDir = jobtypePluginDir;
     this.parentLoader = parentClassLoader;
     this.globalProperties = globalProperties;
-
+    this.clusterRouter = clusterRouter;
     loadPlugins();
   }
 
@@ -319,10 +334,14 @@ public class JobTypeManager {
 
       logger.info("Building " + jobType + " job executor. ");
 
-      final Class<?> executorClass = getJobExecutorClass(jobId, jobType, jobProps, pluginSet);
+      final Class<?> executorClass = getJobExecutorClass(jobId, jobType, jobProps, pluginSet, logger);
 
       jobProps = getJobProps(jobProps, pluginSet, jobType);
       Props pluginLoadProps = getPluginLoadProps(pluginSet, jobType);
+
+      // inject cluster jars and native libraries into jobs through properties
+      jobProps.putAll(
+          getClusterSpecificJobProps(jobProps, pluginLoadProps));
 
       return new JobParams(executorClass, jobProps, pluginSet.getPluginPrivateProps(jobType),
           pluginLoadProps);
@@ -339,9 +358,9 @@ public class JobTypeManager {
     }
   }
 
-  private static Class<?> getJobExecutorClass(String jobId, String jobType, Props jobProps,
-      JobTypePluginSet pluginSet) throws ClassNotFoundException {
-    ClassLoader jobClassLoader = createJobClassLoader(jobId, jobType, pluginSet);
+  private Class<?> getJobExecutorClass(String jobId, String jobType, Props jobProps, JobTypePluginSet pluginSet, Logger logger)
+      throws ClassNotFoundException, MalformedURLException {
+    ClassLoader jobClassLoader = createJobClassLoader(jobId, jobType, jobProps, pluginSet, logger);
     String executorClassName = pluginSet.getPluginClassName(jobType);
     final Class<? extends Object> executorClass = jobClassLoader.loadClass(executorClassName);
     if (executorClass == null) {
@@ -352,12 +371,22 @@ public class JobTypeManager {
     return executorClass;
   }
 
-  private static ClassLoader createJobClassLoader(
-      String jobId, String jobType, JobTypePluginSet pluginSet) {
-    // add jobtype declared dependencies
+  public ClassLoader createJobClassLoader(String jobId, String jobType, Props jobProps, JobTypePluginSet pluginSet, Logger logger)
+      throws MalformedURLException {
+    List<URL> urls = new ArrayList<>();
+
+    // add jobtype declared libraries
     URL[] jobTypeURLs = pluginSet.getPluginClassLoaderURLs(jobType);
+    for (URL jobTypeDependency: jobTypeURLs) {
+      urls.add(jobTypeDependency);
+    }
+
+    // add cluster-specific libraries
+    List<URL> clusterLibraries = getClusterSpecificURLs(jobId, jobType, jobProps, pluginSet, logger);
+    urls.addAll(clusterLibraries);
+
     return new JobClassLoader(
-        jobTypeURLs, JobTypeManager.class.getClassLoader(), jobId);
+        urls.toArray(new URL[urls.size()]), JobTypeManager.class.getClassLoader(), jobId);
   }
 
   private static Props getJobProps(Props jobProps, JobTypePluginSet pluginSet, String jobType) {
@@ -422,7 +451,7 @@ public class JobTypeManager {
     public final Props pluginLoadProps;
     public final Props pluginPrivateProps;
 
-    public JobParams(Class<? extends Object> jobClass, Props jobProps,
+    JobParams(Class<? extends Object> jobClass, Props jobProps,
                      Props pluginPrivateProps, Props pluginLoadProps) {
       this.jobClass = jobClass;
       this.jobClassLoader = jobClass.getClassLoader();
@@ -437,5 +466,90 @@ public class JobTypeManager {
    */
   public synchronized JobTypePluginSet getJobTypePluginSet() {
     return this.pluginSet;
+  }
+
+  /**
+   * Add cluster-specific libraries/jars. if no such cluster is configured, we assume
+   * cluster-specific URLs will be available through the parent classloader from AZ.
+   */
+  private List<URL> getClusterSpecificURLs(String jobId, String jobType, Props jobProps, JobTypePluginSet pluginSet, Logger logger)
+      throws MalformedURLException {
+    Collection<String> components =
+        getClusterComponents(jobProps, pluginSet.getPluginLoaderProps(jobType));
+
+    if (components.isEmpty()) {
+      // This job is local with no dependency on a remote cluster, skip routing
+      return Collections.emptyList();
+    }
+    Cluster targetCluster = this.clusterRouter.getCluster(jobId, jobProps, components);
+
+    if (targetCluster != null && !Cluster.UNKNOWN.equals(targetCluster)) {
+      logger.info("Routing " + jobId + " to cluster: " + targetCluster.clusterId);
+      // inject the cluster id to as a job property
+      jobProps.put(CommonJobProperties.TARGET_CLUSTER, targetCluster.clusterId);
+      return targetCluster.getClusterComponentURLs(components);
+    }
+
+    return Collections.emptyList();
+  }
+
+  /**
+   * Expose cluster-specific libraries and native libraries through job properties.
+   * if a router is configured, construct the properties based on cluster.properties
+   * otherwise, the cluster is implicitly configured, the properties will be based
+   * on plugins' private properties.
+   */
+  private Props getClusterSpecificJobProps(Props jobProps, Props pluginProps) {
+    Props clusterProps = new Props();
+
+    Props sourceProps;
+
+    String clusterId = jobProps.get(CommonJobProperties.TARGET_CLUSTER);
+    if (clusterId != null && !Cluster.UNKNOWN.equals(clusterRouter.getCluster(clusterId))){
+      sourceProps = clusterRouter.getCluster(clusterId).properties;
+      clusterProps.putAll(sourceProps);
+    } else {
+      // fall back to the existing mechanism if no cluster is found/configured
+      sourceProps = pluginProps;
+    }
+
+    Collection<String> components = getClusterComponents(jobProps, pluginProps);
+
+    String javaLibPath = Cluster.getJavaLibraryPath(sourceProps, components);
+    if (javaLibPath != null && !javaLibPath.isEmpty()) {
+      clusterProps.put(CommonJobProperties.TARGET_CLUSTER_CLASSPATH, javaLibPath);
+    }
+    String nativeLibPath = Cluster.getNativeLibraryPath(sourceProps, components);
+    if (nativeLibPath != null && !nativeLibPath.isEmpty()) {
+      clusterProps.put(CommonJobProperties.TARGET_CLUSTER_NATIVE_LIB, nativeLibPath);
+    }
+    String hadoopSecurityManagerClazz =
+        sourceProps.get(Cluster.HADOOP_SECURITY_MANAGER_CLASS_PROP);
+    if (hadoopSecurityManagerClazz != null) {
+      clusterProps.put(
+          Cluster.HADOOP_SECURITY_MANAGER_CLASS_PROP, hadoopSecurityManagerClazz);
+    }
+
+    return clusterProps;
+  }
+
+  /**
+   * Get the components within a cluster that a job depends on.
+   */
+  private static Collection<String> getClusterComponents(Props jobProps, Props pluginProps) {
+    // use ordered set to maintain the classpath order as much as possible
+    Set<String> components = new LinkedHashSet<>(4);
+
+    if (pluginProps != null) {
+      List<String> jobtypeComponents = pluginProps.getStringList(
+          CommonJobProperties.JOBTYPE_CLUSTER_COMPONENTS_DEPENDENCIES, Collections.emptyList(), ",");
+      components.addAll(jobtypeComponents);
+    }
+    if (jobProps != null) {
+      List<String> jobTypeComponents = jobProps.getStringList(
+          CommonJobProperties.JOB_CLUSTER_COMPONENTS_DEPENDENCIES, Collections.emptyList(), ",");
+      components.addAll(jobTypeComponents);
+    }
+    return components;
   }
 }

@@ -1,5 +1,7 @@
 package azkaban.jobExecutor;
 
+import azkaban.utils.Props;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -81,5 +83,29 @@ public class JobClassLoaderTest {
 
     Class clazz = jobClassLoader.loadClass("org.hello.world.HelloWorld");
     Assert.assertEquals(jobClassLoader, clazz.getClassLoader());
+  }
+
+  @Test
+  public void testLog4JClass() throws ClassNotFoundException {
+    ClassLoader currentClassLoader = getClass().getClassLoader();
+    JobClassLoader jobClassLoader = new JobClassLoader(
+        new URL[] {}, currentClassLoader, "testJob");
+    // make org.apache.log4j.Logger class available to the JobClassLoader
+    jobClassLoader.addURL(Logger.class);
+
+    Class clazz = jobClassLoader.loadClass(Logger.class.getName());
+    Assert.assertEquals(currentClassLoader, clazz.getClassLoader());
+  }
+
+  @Test
+  public void testPropsClass() throws ClassNotFoundException {
+    ClassLoader currentClassLoader = getClass().getClassLoader();
+    JobClassLoader jobClassLoader = new JobClassLoader(
+        new URL[] {}, currentClassLoader, "testJob");
+    // make azkaban.utils.Props class available to the JobClassLoader
+    jobClassLoader.addURL(Props.class);
+
+    Class clazz = jobClassLoader.loadClass(Props.class.getName());
+    Assert.assertEquals(currentClassLoader, clazz.getClassLoader());
   }
 }
