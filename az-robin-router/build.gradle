@@ -1,0 +1,52 @@
+apply plugin: 'java'
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "com.github.jengelman.gradle.plugins:shadow:2.0.4"
+    }
+}
+
+apply plugin: 'com.github.johnrengelman.shadow'
+
+dependencies {
+    compileOnly(project(":azkaban-common"))
+    compile(deps.robinClient) {
+        transitive = false
+    }
+    compile(deps.robinApi) {
+        transitive = false
+    }
+    compileOnly(deps.hadoopCommon)
+}
+
+shadowJar {
+    dependencies {
+        exclude(project(':azkaban-common'))
+        exclude(dependency{
+            it.moduleGroup == 'org.apache.hadoop'
+        })
+        exclude(dependency{
+            it.moduleGroup == 'org.slf4j'
+        })
+        exclude(dependency{
+            it.moduleGroup == 'org.apache.logging.log4j'
+        })
+        exclude(dependency{
+            it.moduleGroup == 'log4j'
+        })
+        exclude(dependency{
+            it.moduleGroup == 'com.google.guava'
+        })
+        exclude(dependency{
+            it.moduleGroup == 'com.google.inject'
+        })
+    }
+    zip64 true
+    classifier "uber"
+}
+
+build.dependsOn(shadowJar)
+

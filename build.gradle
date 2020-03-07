@@ -51,6 +51,14 @@ allprojects {
   repositories {
     mavenCentral()
     mavenLocal()
+    ivy {
+      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release'
+      layout 'pattern', {
+        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
+        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+        m2compatible = true
+      }
+    }
   }
 }
 
@@ -114,6 +122,8 @@ ext.deps = [
     restliGenerator      : 'com.linkedin.pegasus:generator:' + versions.restli,
     restliServer         : 'com.linkedin.pegasus:restli-server:' + versions.restli,
     restliTools          : 'com.linkedin.pegasus:restli-tools:' + versions.restli,
+    robinClient          : 'com.linkedin.robin:robin-client:0.0.26',
+    robinApi             : 'com.linkedin.robin:robin-api:0.0.26',
     slf4j                : 'org.slf4j:slf4j-api:' + versions.slf4j,
     slf4jLog4j           : 'org.slf4j:slf4j-log4j12:' + versions.slf4j,
     sparkCore            : 'org.apache.spark:spark-core_2.10:1.4.0',
