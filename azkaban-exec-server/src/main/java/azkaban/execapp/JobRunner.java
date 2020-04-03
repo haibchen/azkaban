@@ -23,6 +23,7 @@ import azkaban.event.EventData;
 import azkaban.event.EventHandler;
 import azkaban.execapp.event.BlockingStatus;
 import azkaban.execapp.event.FlowWatcher;
+import azkaban.executor.ClusterInfo;
 import azkaban.executor.ExecutableFlowBase;
 import azkaban.executor.ExecutableNode;
 import azkaban.executor.ExecutorLoader;
@@ -43,7 +44,6 @@ import azkaban.utils.UndefinedPropertyException;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -734,6 +734,16 @@ public class JobRunner extends EventHandler implements Runnable {
         JobTypeManager.JobParams jobParams = jobtypeManager.createJobParams(jobId, this.props, this.logger);
         Thread.currentThread().setContextClassLoader(jobParams.jobClassLoader);
         this.job = JobTypeManager.createJob(this.jobId, jobParams, this.logger);
+
+        if (jobParams.jobProps.containsKey(CommonJobProperties.TARGET_CLUSTER)) {
+          String clusterId = jobParams.jobProps.getString(CommonJobProperties.TARGET_CLUSTER);
+          String hadoopClusterURL = jobParams.jobProps.get(Constants.ConfigurationKeys.HADOOP_CLUSTER_URL);
+          String rmURL = jobParams.jobProps.get(Constants.ConfigurationKeys.RESOURCE_MANAGER_JOB_URL);
+          String hsURL = jobParams.jobProps.get(Constants.ConfigurationKeys.HISTORY_SERVER_JOB_URL);
+          String shsURL = jobParams.jobProps.get(Constants.ConfigurationKeys.SPARK_HISTORY_SERVER_JOB_URL);
+          this.node.setClusterInfo(new ClusterInfo(clusterId, hadoopClusterURL, rmURL, hsURL, shsURL));
+        }
+
       } catch (final JobTypeManagerException e) {
         this.logger.error("Failed to build job type", e);
         return null;

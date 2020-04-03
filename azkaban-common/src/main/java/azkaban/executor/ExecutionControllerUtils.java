@@ -46,7 +46,7 @@ public class ExecutionControllerUtils {
   private static final Logger logger = LoggerFactory.getLogger(
       ExecutionControllerUtils.class);
   private static final String SPARK_JOB_TYPE = "spark";
-  private static final String APPLICATION_ID = "${application.id}";
+  private static final String APPLICATION_ID = "<application.id>";
   // The regex to look for while fetching application ID from the Hadoop/Spark job log
   private static final Pattern APPLICATION_ID_PATTERN = Pattern.compile("application_(\\d+_\\d+)");
   // The regex to look for while validating the content from RM job link
@@ -283,58 +283,70 @@ public class ExecutionControllerUtils {
       return null;
     }
 
-    final URL url;
-    final String jobLinkUrl;
+    URL url = null;
+    String jobLinkUrl = null;
     boolean isRMJobLinkValid = true;
 
-    try {
-      url = new URL(azkProps.getString(ConfigurationKeys.RESOURCE_MANAGER_JOB_URL)
-          .replace(APPLICATION_ID, applicationId));
-      final String keytabPrincipal = requireNonNull(
-          azkProps.getString(ConfigurationKeys.AZKABAN_KERBEROS_PRINCIPAL));
-      final String keytabPath = requireNonNull(azkProps.getString(ConfigurationKeys
-          .AZKABAN_KEYTAB_PATH));
-      final HttpURLConnection connection = AuthenticationUtils.loginAuthenticatedURL(url,
-          keytabPrincipal, keytabPath);
+    final ExecutableNode node = exFlow.getExecutableNodePath(jobId);
+    if (node == null) {
+      logger.error(
+          "Failed to create job url. Job " + jobId + " doesn't exist in " + exFlow
+              .getExecutionId());
+      return null;
+    }
 
-      try (final BufferedReader in = new BufferedReader(
-          new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-        String inputLine;
-        while ((inputLine = in.readLine()) != null) {
-          if (FAILED_TO_READ_APPLICATION_PATTERN.matcher(inputLine).find()) {
-            logger.info("RM job link has expired for application_" + applicationId);
-            isRMJobLinkValid = false;
-            break;
-          }
-          if (INVALID_APPLICATION_ID_PATTERN.matcher(inputLine).find()) {
-            logger.info("Invalid application id application_" + applicationId);
-            return null;
+    ClusterInfo cluster = node.getClusterInfo();
+    if (cluster == null) {
+      // TODO think more about embedded jobs.
+      return null;
+    }
+
+    String resourceManagerJobURL = cluster.resourceManagerURL;
+    if (resourceManagerJobURL != null) {
+      try {
+        url = new URL(resourceManagerJobURL.replace(APPLICATION_ID, applicationId));
+        final String keytabPrincipal = requireNonNull(
+            azkProps.getString(ConfigurationKeys.AZKABAN_KERBEROS_PRINCIPAL));
+        final String keytabPath = requireNonNull(azkProps.getString(ConfigurationKeys
+            .AZKABAN_KEYTAB_PATH));
+        final HttpURLConnection connection = AuthenticationUtils.loginAuthenticatedURL(url,
+            keytabPrincipal, keytabPath);
+
+        try (final BufferedReader in = new BufferedReader(
+            new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+          String inputLine;
+          while ((inputLine = in.readLine()) != null) {
+            if (FAILED_TO_READ_APPLICATION_PATTERN.matcher(inputLine).find()) {
+              logger.info("RM job link has expired for application_" + applicationId);
+              isRMJobLinkValid = false;
+              break;
+            }
+            if (INVALID_APPLICATION_ID_PATTERN.matcher(inputLine).find()) {
+              logger.info("Invalid application id application_" + applicationId);
+              return null;
+            }
           }
         }
+      } catch (Exception e) {
+        logger.error("Failed to get job link for application_" + applicationId, e);
+        return null;
       }
-    } catch (final Exception e) {
-      logger.error("Failed to get job link for application_" + applicationId, e);
-      return null;
     }
 
     if (isRMJobLinkValid) {
       jobLinkUrl = url.toString();
     } else {
       // If RM job url has expired, build the url to the JHS or SHS instead.
-      final ExecutableNode node = exFlow.getExecutableNodePath(jobId);
-      if (node == null) {
-        logger.error(
-            "Failed to create job url. Job " + jobId + " doesn't exist in " + exFlow
-                .getExecutionId());
-        return null;
-      }
-
       if (node.getType().equals(SPARK_JOB_TYPE)) {
-        jobLinkUrl = azkProps.get(ConfigurationKeys.SPARK_HISTORY_SERVER_JOB_URL)
-            .replace(APPLICATION_ID, applicationId);
+        String sparkHistoryServerJobUrl = cluster.sparkHistoryServerULR;
+        if (sparkHistoryServerJobUrl != null) {
+          jobLinkUrl = sparkHistoryServerJobUrl.replace(APPLICATION_ID, applicationId);
+        }
       } else {
-        jobLinkUrl = azkProps.get(ConfigurationKeys.HISTORY_SERVER_JOB_URL)
-            .replace(APPLICATION_ID, applicationId);
+        String historyServerJobUrl = cluster.historyServerURL;
+        if (historyServerJobUrl != null) {
+          jobLinkUrl = historyServerJobUrl.replace(APPLICATION_ID, applicationId);
+        }
       }
     }
 
