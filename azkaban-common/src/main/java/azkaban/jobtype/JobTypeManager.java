@@ -212,6 +212,18 @@ public class JobTypeManager {
       throw new JobTypeManagerException(e);
     }
 
+    String jobPropsProcessorClass = pluginLoadProps.get("jobtype.jobpropprocessor.class");
+    if (jobPropsProcessorClass != null && !jobPropsProcessorClass.isEmpty()) {
+      Class<? extends JobPropsProcessor> processorClazz;
+      try {
+        processorClazz = (Class<? extends JobPropsProcessor>) jobTypeLoader.loadClass(jobPropsProcessorClass);
+        JobPropsProcessor jobPropsProcessor = (JobPropsProcessor)
+            Utils.callConstructor(processorClazz, pluginLoadProps);
+        plugins.addPluginJobPropsProcessor(jobTypeName, jobPropsProcessor);
+      } catch (final ClassNotFoundException e) {
+        throw new JobTypeManagerException(e);
+      }
+    }
 
     LOGGER.info("Verifying job plugin " + jobTypeName);
     try {
@@ -336,6 +348,11 @@ public class JobTypeManager {
             jobProps.put(k, pluginJobProps.get(k));
           }
         }
+      }
+
+      JobPropsProcessor propsProcessor = pluginSet.getPluginJobPropsProcessor(jobType);
+      if (propsProcessor != null) {
+        jobProps = propsProcessor.process(jobProps);
       }
       jobProps = PropsUtils.resolveProps(jobProps);
 
