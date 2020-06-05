@@ -15,6 +15,7 @@
  */
 package azkaban.jobExecutor;
 
+import azkaban.flow.CommonJobProperties;
 import azkaban.server.AzkabanServer;
 import azkaban.utils.MemConfValue;
 import azkaban.utils.Pair;
@@ -22,8 +23,12 @@ import azkaban.utils.Props;
 import azkaban.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -81,12 +86,44 @@ public class JavaProcessJob extends ProcessJob {
 
   protected String getClassPathParam() {
     final List<String> classPath = getClassPaths();
+
+    classPath.addAll(getClusterComponentClassPath());
     if (classPath == null || classPath.size() == 0) {
       throw new IllegalArgumentException(
           "No classpath defined and no .jar files found in job directory. Can't run java command.");
     }
 
     return "-cp " + createArguments(classPath, ":") + " ";
+  }
+
+  private List<String> getClusterComponentClassPath() {
+    List<String> classpaths = new ArrayList<>();
+    Map<String, String> compoClasspaths = sysProps.getMapByPrefix("library.path.");
+    for (String compo : getClusterComponents()) {
+      classpaths.add(compoClasspaths.get(compo));
+    }
+    return classpaths;
+  }
+
+
+  /**
+   * Get the components within a cluster that a job depends on.
+   */
+  private Collection<String> getClusterComponents() {
+    // use ordered set to maintain the classpath order as much as possible
+    Set<String> components = new LinkedHashSet<>();
+
+    List<String> jobtypeComponents = sysProps.getStringList(
+        CommonJobProperties.JOBTYPE_CLUSTER_COMPONENTS_DEPENDENCIES,
+        Collections.emptyList(), ",");
+    components.addAll(jobtypeComponents);
+
+    List<String> jobTypeComponents = jobProps.getStringList(
+        CommonJobProperties.JOB_CLUSTER_COMPONENTS_DEPENDENCIES,
+        Collections.emptyList(), ",");
+    components.addAll(jobTypeComponents);
+
+    return components;
   }
 
   protected List<String> getClassPaths() {
@@ -165,11 +202,25 @@ public class JavaProcessJob extends ProcessJob {
   protected String getJVMArguments() {
     final String globalJVMArgs = getJobProps().getString(GLOBAL_JVM_PARAMS, null);
 
+    String nativeLibPath = getNativeLibrarAsJVMArguments();
+
     if (globalJVMArgs == null) {
-      return getJobProps().getString(JVM_PARAMS, "");
+      return nativeLibPath + " " + getJobProps().getString(JVM_PARAMS, "");
     }
 
-    return globalJVMArgs + " " + getJobProps().getString(JVM_PARAMS, "");
+    return globalJVMArgs + " " + nativeLibPath + " " + getJobProps().getString(JVM_PARAMS, "");
+  }
+
+  private String getNativeLibrarAsJVMArguments() {
+    List<String> nativeLibraryLibPaths = new ArrayList<>();
+    Map<String, String> compoNativeLibPaths = sysProps.getMapByPrefix("native.library.path.");
+    for (String compo : getClusterComponents()) {
+      String nativeLibPath = compoNativeLibPaths.get(compo);
+      if (nativeLibPath != null) {
+        nativeLibraryLibPaths.add(nativeLibPath);
+      }
+    }
+    return "-Djava.library.path=" + String.join(":", nativeLibraryLibPaths);
   }
 
   protected String createArguments(final List<String> arguments, final String separator) {
