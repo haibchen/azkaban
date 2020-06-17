@@ -1,6 +1,7 @@
 package azkaban.cluster;
 
 import azkaban.utils.Props;
+import org.apache.hadoop.conf.Configuration;
 
 import javax.inject.Inject;
 import java.util.Collection;
@@ -10,8 +11,8 @@ import java.util.Collection;
  */
 public class DefaultClusterRouter extends ClusterRouter {
   @Inject
-  public DefaultClusterRouter(ClusterRegistry clusterRegistry) {
-    super(clusterRegistry);
+  public DefaultClusterRouter(ClusterRegistry clusterRegistry, Configuration configuration) {
+    super(clusterRegistry, configuration);
   }
 
   @Override

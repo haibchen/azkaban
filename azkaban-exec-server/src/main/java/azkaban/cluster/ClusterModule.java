@@ -5,7 +5,9 @@ import azkaban.utils.Props;
 import azkaban.utils.Utils;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
+import com.google.inject.Singleton;
 import com.google.inject.name.Named;
+import org.apache.hadoop.conf.Configuration;
 
 import java.io.File;
 
@@ -31,5 +33,16 @@ public class ClusterModule extends AbstractModule {
         DisabledClusterRouter.class.getName());
     Class<?> routerClazz = Class.forName(routerClass);
     return (ClusterRouter) Utils.callConstructor(routerClazz, clusterRegistry);
+  }
+
+  @Provides
+  @Singleton
+  public Configuration getRouterConf(Props props) {
+    // TODO: put necessary core-site properties into robin-site.xml and do not load default xmls
+    Configuration configuration = new Configuration();
+    String routerConfPath = props.getString(AzkabanExecutorServer.CLUSTER_ROUTER_CONF,
+        "robin-site.xml");
+    configuration.addResource(routerConfPath);
+    return configuration;
   }
 }

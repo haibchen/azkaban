@@ -2,6 +2,7 @@ package azkaban.cluster;
 
 import azkaban.utils.Props;
 import com.google.common.annotations.VisibleForTesting;
+import org.apache.hadoop.conf.Configuration;
 
 import java.util.Collection;
 
@@ -10,13 +11,13 @@ import java.util.Collection;
  * so that the cluster implicitly loaded through Azkaban JVM will be used.
  */
 public class DisabledClusterRouter extends ClusterRouter {
-  public DisabledClusterRouter(ClusterRegistry clusterRegistry) {
-    super(clusterRegistry);
+  public DisabledClusterRouter(ClusterRegistry clusterRegistry, Configuration configuration) {
+    super(clusterRegistry, configuration);
   }
 
   @VisibleForTesting
   public DisabledClusterRouter() {
-    super(new ClusterRegistry());
+    super(new ClusterRegistry(), new Configuration());
   }
 
   @Override
