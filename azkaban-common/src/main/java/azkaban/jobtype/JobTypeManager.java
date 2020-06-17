@@ -342,6 +342,7 @@ public class JobTypeManager {
       // inject cluster jars and native libraries into jobs through properties
       jobProps.putAll(
           getClusterSpecificJobProps(jobProps, pluginLoadProps));
+      jobProps = PropsUtils.resolveProps(jobProps);
 
       return new JobParams(executorClass, jobProps, pluginSet.getPluginPrivateProps(jobType),
           pluginLoadProps);
@@ -409,7 +410,6 @@ public class JobTypeManager {
     if (propsProcessor != null) {
       jobProps = propsProcessor.process(jobProps);
     }
-    jobProps = PropsUtils.resolveProps(jobProps);
     return jobProps;
   }
 

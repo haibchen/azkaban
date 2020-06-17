@@ -27,12 +27,12 @@ public class ClusterModule extends AbstractModule {
   }
 
   @Provides
-  public ClusterRouter getClusterRouter(final Props props, ClusterRegistry clusterRegistry)
+  public ClusterRouter getClusterRouter(final Props props, ClusterRegistry clusterRegistry, Configuration conf)
       throws ClassNotFoundException {
     String routerClass = props.getString(AzkabanExecutorServer.CLUSTER_ROUTER_CLASS,
         DisabledClusterRouter.class.getName());
     Class<?> routerClazz = Class.forName(routerClass);
-    return (ClusterRouter) Utils.callConstructor(routerClazz, clusterRegistry);
+    return (ClusterRouter) Utils.callConstructor(routerClazz, clusterRegistry, conf);
   }
 
   @Provides
