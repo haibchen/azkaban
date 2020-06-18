@@ -106,7 +106,7 @@ public class JobClassLoader extends URLClassLoader {
     }
 
     // try parent
-    if (c == null) {
+    if (c == null && !name.startsWith("org.apache.hadoop")) {
       c = parent.loadClass(name);
       if (LOG.isDebugEnabled() && c != null) {
         LOG.debug("Loaded class from parent: " + name + " for job " + jobId);

@@ -334,10 +334,9 @@ public class JobTypeManager {
 
       logger.info("Building " + jobType + " job executor. ");
 
-      final Class<?> executorClass = getJobExecutorClass(jobId, jobType, jobProps, pluginSet, logger);
-
       jobProps = getJobProps(jobProps, pluginSet, jobType);
       Props pluginLoadProps = getPluginLoadProps(pluginSet, jobType);
+      final Class<?> executorClass = getJobExecutorClass(jobId, jobType, jobProps, pluginSet, logger);
 
       // inject cluster jars and native libraries into jobs through properties
       jobProps.putAll(
