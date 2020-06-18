@@ -295,42 +295,49 @@ public class ExecutionControllerUtils {
       return null;
     }
 
+    String resourceManagerJobUrl;
+    String sparkHistoryServerUrl;
+    String jobHistoryServerUrl;
+
     ClusterInfo cluster = node.getClusterInfo();
-    if (cluster == null) {
-      // TODO think more about embedded jobs.
-      return null;
+    if (cluster != null && cluster.resourceManagerURL != null) {
+      resourceManagerJobUrl = cluster.resourceManagerURL;
+      sparkHistoryServerUrl = cluster.sparkHistoryServerULR;
+      jobHistoryServerUrl = cluster.historyServerURL;
+    } else {
+      // fall back to the webserver configuration if clusterInfo is missing for this job
+      resourceManagerJobUrl = azkProps.getString(ConfigurationKeys.RESOURCE_MANAGER_JOB_URL);
+      sparkHistoryServerUrl = azkProps.getString(ConfigurationKeys.SPARK_HISTORY_SERVER_JOB_URL);
+      jobHistoryServerUrl = azkProps.getString(ConfigurationKeys.HISTORY_SERVER_JOB_URL);
     }
 
-    String resourceManagerJobURL = cluster.resourceManagerURL;
-    if (resourceManagerJobURL != null) {
-      try {
-        url = new URL(resourceManagerJobURL.replace(APPLICATION_ID, applicationId));
-        final String keytabPrincipal = requireNonNull(
-            azkProps.getString(ConfigurationKeys.AZKABAN_KERBEROS_PRINCIPAL));
-        final String keytabPath = requireNonNull(azkProps.getString(ConfigurationKeys
-            .AZKABAN_KEYTAB_PATH));
-        final HttpURLConnection connection = AuthenticationUtils.loginAuthenticatedURL(url,
-            keytabPrincipal, keytabPath);
+    try {
+      url = new URL(resourceManagerJobUrl.replace(APPLICATION_ID, applicationId));
+      final String keytabPrincipal = requireNonNull(
+          azkProps.getString(ConfigurationKeys.AZKABAN_KERBEROS_PRINCIPAL));
+      final String keytabPath = requireNonNull(azkProps.getString(ConfigurationKeys
+          .AZKABAN_KEYTAB_PATH));
+      final HttpURLConnection connection = AuthenticationUtils.loginAuthenticatedURL(url,
+          keytabPrincipal, keytabPath);
 
-        try (final BufferedReader in = new BufferedReader(
-            new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-          String inputLine;
-          while ((inputLine = in.readLine()) != null) {
-            if (FAILED_TO_READ_APPLICATION_PATTERN.matcher(inputLine).find()) {
-              logger.info("RM job link has expired for application_" + applicationId);
-              isRMJobLinkValid = false;
-              break;
-            }
-            if (INVALID_APPLICATION_ID_PATTERN.matcher(inputLine).find()) {
-              logger.info("Invalid application id application_" + applicationId);
-              return null;
-            }
+      try (final BufferedReader in = new BufferedReader(
+          new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+        String inputLine;
+        while ((inputLine = in.readLine()) != null) {
+          if (FAILED_TO_READ_APPLICATION_PATTERN.matcher(inputLine).find()) {
+            logger.info("RM job link has expired for application_" + applicationId);
+            isRMJobLinkValid = false;
+            break;
+          }
+          if (INVALID_APPLICATION_ID_PATTERN.matcher(inputLine).find()) {
+            logger.info("Invalid application id application_" + applicationId);
+            return null;
           }
         }
-      } catch (Exception e) {
-        logger.error("Failed to get job link for application_" + applicationId, e);
-        return null;
       }
+    } catch (Exception e) {
+      logger.error("Failed to get job link for application_" + applicationId, e);
+      return null;
     }
 
     if (isRMJobLinkValid) {
@@ -338,15 +345,9 @@ public class ExecutionControllerUtils {
     } else {
       // If RM job url has expired, build the url to the JHS or SHS instead.
       if (node.getType().equals(SPARK_JOB_TYPE)) {
-        String sparkHistoryServerJobUrl = cluster.sparkHistoryServerULR;
-        if (sparkHistoryServerJobUrl != null) {
-          jobLinkUrl = sparkHistoryServerJobUrl.replace(APPLICATION_ID, applicationId);
-        }
+          jobLinkUrl = sparkHistoryServerUrl.replace(APPLICATION_ID, applicationId);
       } else {
-        String historyServerJobUrl = cluster.historyServerURL;
-        if (historyServerJobUrl != null) {
-          jobLinkUrl = historyServerJobUrl.replace(APPLICATION_ID, applicationId);
-        }
+          jobLinkUrl = jobHistoryServerUrl.replace(APPLICATION_ID, applicationId);
       }
     }
 

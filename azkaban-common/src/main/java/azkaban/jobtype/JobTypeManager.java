@@ -486,6 +486,7 @@ public class JobTypeManager {
       logger.info("Routing " + jobId + " to cluster: " + targetCluster.clusterId);
       // inject the cluster id to as a job property
       jobProps.put(CommonJobProperties.TARGET_CLUSTER, targetCluster.clusterId);
+      jobProps.putAll(targetCluster.properties);
       return targetCluster.getClusterComponentURLs(components);
     }
 
